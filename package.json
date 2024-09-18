@@ -1,0 +1,51 @@
+{
+  "name": "comapeo",
+  "version": "1.0.0",
+  "description": "CLI for CoMapeo Core",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@comapeo/core": "^1.0.0",
+    "env-paths": "^3.0.0",
+    "make-dir": "^5.0.0",
+    "prompts": "^2.4.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@trivago/prettier-plugin-sort-imports": "^4.3.0",
+    "@types/eslint": "^9.6.1",
+    "@types/eslint__js": "^8.42.3",
+    "@types/yargs": "^17.0.33",
+    "globals": "^15.9.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.2"
+  },
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "importOrder": [
+      "^node:",
+      "^[./]"
+    ],
+    "importOrderSeparation": true,
+    "plugins": [
+      "@trivago/prettier-plugin-sort-imports"
+    ]
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --cache --fix"
+    ],
+    "*.{js,css,md}": "prettier --write"
+  }
+}
