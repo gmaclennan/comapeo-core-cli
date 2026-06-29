@@ -187,6 +187,31 @@ function fmtValue(v) {
   return String(v)
 }
 
+/**
+ * Indented lines for a doc reference (or array of them). Refs are
+ * `{ docId, versionId }`; we show each id on its own line with short ids so
+ * they're readable instead of a one-line JSON blob.
+ * @param {any} ref
+ */
+function refLines(ref) {
+  const refs = Array.isArray(ref) ? ref : [ref]
+  const out = []
+  for (const r of refs) {
+    if (r && typeof r === 'object' && 'docId' in r) {
+      out.push(
+        `    ${chalk.dim('docId'.padEnd(11))}${chalk.cyan(shortId(r.docId))}`,
+      )
+      if (r.versionId)
+        out.push(
+          `    ${chalk.dim('versionId'.padEnd(11))}${chalk.cyan(shortId(r.versionId))}`,
+        )
+    } else {
+      out.push(`    ${fmtValue(r)}`)
+    }
+  }
+  return out
+}
+
 const RECORD_HIDDEN = new Set([
   'docId',
   'versionId',
@@ -225,6 +250,9 @@ export function recordDetail(doc) {
       for (const [tk, tv] of Object.entries(v)) {
         lines.push(`    ${chalk.dim(tk.padEnd(11))}${fmtValue(tv)}`)
       }
+    } else if (/Refs?$/.test(k) && v && typeof v === 'object') {
+      lines.push(f(k, ''))
+      lines.push(...refLines(v))
     } else {
       lines.push(f(k, fmtValue(v)))
     }

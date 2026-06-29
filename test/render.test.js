@@ -3,6 +3,7 @@ import stripAnsi from 'strip-ansi'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import { shortId } from '../src/core/format.js'
 import { createSyncModel } from '../src/core/sync-model.js'
 import {
   bar,
@@ -99,6 +100,26 @@ test('recordDetail flattens tags, uses short ids, and marks read-only', () => {
   assert.match(out, /clean\s+true/)
   assert.match(out, /read-only/)
   assert.ok(!out.includes('aa'.repeat(32)), 'full hex id is not shown')
+})
+
+test('recordDetail flattens *Ref fields into short docId/versionId lines', () => {
+  const presetDocId = 'cc'.repeat(32)
+  const presetVersion = `${'dd'.repeat(32)}/4`
+  const doc = {
+    docId: 'aa'.repeat(32),
+    versionId: 'bb'.repeat(32),
+    schemaName: 'observation',
+    presetRef: { docId: presetDocId, versionId: presetVersion },
+    fieldRefs: [{ docId: 'ee'.repeat(32), versionId: `${'ff'.repeat(32)}/0` }],
+  }
+  const out = stripAnsi(recordDetail(doc))
+  assert.match(out, /presetRef/)
+  // flattened, not a one-line JSON blob
+  assert.ok(!out.includes('{'), 'refs are not rendered as JSON')
+  assert.match(out, new RegExp(`docId\\s+${shortId(presetDocId)}`))
+  assert.match(out, new RegExp(`versionId\\s+${shortId(presetVersion)}`))
+  assert.match(out, /@4/, 'versionId index kept with @')
+  assert.match(out, /fieldRefs/)
 })
 
 test('sparkline scales to the window max and clamps width', () => {

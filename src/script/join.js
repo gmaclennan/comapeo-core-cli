@@ -1,5 +1,6 @@
 import { confirm } from '@inquirer/prompts'
 
+import { shortId } from '../core/format.js'
 import { invitorName, waitForInvite } from '../core/invites.js'
 import { openSession } from '../core/session.js'
 import { CliError, info, printJson } from './output.js'
@@ -57,7 +58,7 @@ export async function join({ storage, autoAccept, from, json, timeout }) {
 
     if (json)
       printJson({ joined: true, projectId, projectName: invite.projectName })
-    else info(`Joined "${invite.projectName}"\n  ${projectId}`)
+    else info(`Joined "${invite.projectName}"\n  ${shortId(projectId)}`)
   } finally {
     await session.close()
   }

@@ -49,7 +49,7 @@ export async function projectsCreate({ storage, name, json }) {
   try {
     const projectId = await session.manager.createProject({ name })
     if (json) printJson({ projectId, name })
-    else info(`Created project "${name}"\n  ${projectId}`)
+    else info(`Created project "${name}"\n  ${shortId(projectId)}`)
   } finally {
     await session.close()
   }

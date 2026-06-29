@@ -1,3 +1,4 @@
+import { shortId } from '../core/format.js'
 import { openSession } from '../core/session.js'
 import { info, printJson } from './output.js'
 
@@ -13,7 +14,7 @@ export async function deviceInfo({ storage, json }) {
     const out = { ...deviceInfo, deviceId: session.manager.deviceId }
     if (json) printJson(out)
     else {
-      info(`Device ID:   ${out.deviceId}`)
+      info(`Device ID:   ${shortId(out.deviceId)}`)
       info(`Name:        ${out.name ?? '(unset)'}`)
       info(`Device type: ${out.deviceType ?? '(unset)'}`)
     }
