@@ -1,8 +1,8 @@
 import fs from 'node:fs/promises'
 
-import { resolveProjectId } from '../core/projects.js'
 import { openSession } from '../core/session.js'
 import { CliError, info, printJson } from './output.js'
+import { pickProjectId } from './resolve-project.js'
 
 /**
  * Export a project's data to a folder as GeoJSON (default) or a zip that bundles
@@ -19,14 +19,9 @@ import { CliError, info, printJson } from './output.js'
 export async function exportData({ storage, out, project, zip, lang, json }) {
   if (!out) throw new CliError('An output folder is required (--out <dir>).', 2)
   const session = await openSession({ storage })
-  const { manager, config } = session
+  const { manager } = session
   try {
-    const projectId = await resolveProjectId(manager, {
-      projectId: project,
-      fallbackId: config.data.lastProjectId,
-    }).catch((e) => {
-      throw new CliError(e.message, 2)
-    })
+    const projectId = await pickProjectId(manager, { project, json })
 
     await fs.mkdir(out, { recursive: true })
     const projectInstance = /** @type {any} */ (

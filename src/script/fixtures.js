@@ -1,7 +1,7 @@
 import { generateFixtures, resolveCenter } from '../core/fixtures.js'
-import { resolveProjectId } from '../core/projects.js'
 import { openSession } from '../core/session.js'
 import { CliError, info, printJson } from './output.js'
+import { pickProjectId } from './resolve-project.js'
 
 /**
  * Generate synthetic observations/tracks for demos and testing.
@@ -30,12 +30,7 @@ export async function fixtures({
 }) {
   const session = await openSession({ storage })
   try {
-    const projectId = await resolveProjectId(session.manager, {
-      projectId: project,
-      fallbackId: session.config.data.lastProjectId,
-    }).catch((e) => {
-      throw new CliError(e.message, 2)
-    })
+    const projectId = await pickProjectId(session.manager, { project, json })
 
     const center = await resolveCenter({ lat, lon, geoip })
     if (!center) {

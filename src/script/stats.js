@@ -1,6 +1,6 @@
-import { resolveProjectId } from '../core/projects.js'
 import { openSession } from '../core/session.js'
-import { CliError, info, printJson, printTable } from './output.js'
+import { info, printJson, printTable } from './output.js'
+import { pickProjectId } from './resolve-project.js'
 
 /**
  * Project activity stats. Core's `$getStats` returns new observations, tracks,
@@ -14,14 +14,9 @@ import { CliError, info, printJson, printTable } from './output.js'
  */
 export async function stats({ storage, project, json }) {
   const session = await openSession({ storage })
-  const { manager, config } = session
+  const { manager } = session
   try {
-    const projectId = await resolveProjectId(manager, {
-      projectId: project,
-      fallbackId: config.data.lastProjectId,
-    }).catch((e) => {
-      throw new CliError(e.message, 2)
-    })
+    const projectId = await pickProjectId(manager, { project, json })
 
     const projectInstance = /** @type {any} */ (
       await manager.getProject(projectId)

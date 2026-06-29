@@ -1,7 +1,7 @@
-import { resolveProjectId } from '../core/projects.js'
 import { openSession } from '../core/session.js'
 import { runSync } from '../core/sync-runner.js'
 import { CliError, info, printNdjson } from './output.js'
+import { pickProjectId } from './resolve-project.js'
 
 /**
  * Build a compact, machine-friendly snapshot of the current sync model.
@@ -46,12 +46,7 @@ export async function sync({
   /** @type {ReturnType<typeof runSync> | undefined} */
   let runner
   try {
-    const projectId = await resolveProjectId(manager, {
-      projectId: project,
-      fallbackId: config.data.lastProjectId,
-    }).catch((e) => {
-      throw new CliError(e.message, 2)
-    })
+    const projectId = await pickProjectId(manager, { project, json })
 
     const projectInstance = await manager.getProject(projectId)
     runner = runSync(manager, projectInstance)

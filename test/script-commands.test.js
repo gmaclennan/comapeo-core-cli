@@ -5,6 +5,7 @@ import path from 'node:path'
 import { after, test } from 'node:test'
 
 import { generateFixtures } from '../src/core/fixtures.js'
+import { shortId } from '../src/core/format.js'
 import { openSession } from '../src/core/session.js'
 import { deviceArchive } from '../src/script/device.js'
 import { exportData } from '../src/script/export.js'
@@ -107,6 +108,35 @@ test(
     assert.equal(sum(projectStats.tracks), 1, 'stats counts the 1 track')
   },
 )
+
+test('with multiple projects, a command refuses unless given --project', async () => {
+  const storage = await fsPromises.mkdtemp(
+    path.join(os.tmpdir(), 'comapeo-multi-'),
+  )
+  cleanups.push(() => fsPromises.rm(storage, { recursive: true, force: true }))
+
+  const seed = await openSession({ storage })
+  const a = await seed.manager.createProject({ name: 'Alpha' })
+  await seed.manager.createProject({ name: 'Beta' })
+  // A leftover last-used id must NOT be used as a silent fallback anymore.
+  seed.config.data.lastProjectId = a
+  await seed.config.write()
+  await seed.close()
+
+  // Non-interactive + ambiguous → refuse (exit code 2), don't guess.
+  await assert.rejects(
+    () =>
+      captureStdout(() => view({ storage, schema: 'observation', json: true })),
+    (/** @type {any} */ err) =>
+      err?.code === 2 && /Multiple projects/.test(err.message),
+  )
+
+  // An explicit short id disambiguates and resolves.
+  const out = await captureStdout(() =>
+    view({ storage, schema: 'observation', project: shortId(a), json: true }),
+  )
+  assert.deepEqual(JSON.parse(out), [], 'resolved to Alpha (empty project)')
+})
 
 test('device archive shows and toggles archive mode', async () => {
   const storage = await fsPromises.mkdtemp(

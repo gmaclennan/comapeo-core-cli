@@ -1,27 +1,29 @@
+import { idMatches, shortId } from './format.js'
+
 /**
  * Resolve which project a command should act on: an explicit id (full or a
- * unique prefix), else the last-used project from config, else the only project.
- * Throws a descriptive error when ambiguous.
+ * unique prefix, raw or short form), else the only project if there's exactly
+ * one. Throws a descriptive error when no id is given and the choice is
+ * ambiguous, or when an id matches zero/many projects.
+ *
+ * There is deliberately no "last-used project" fallback: acting on a project
+ * implicitly chosen by a previous command is too surprising. Callers that want
+ * to let an operator pick interactively should catch the ambiguity (see
+ * {@link AmbiguousProjectError}) and prompt.
  *
  * @param {import('@comapeo/core').MapeoManager} manager
  * @param {object} [opts]
- * @param {string} [opts.projectId] Explicit id or unique prefix
- * @param {string} [opts.fallbackId] e.g. the last-used project id from config
+ * @param {string} [opts.projectId] Explicit id or unique prefix (raw or short)
  * @returns {Promise<string>}
  */
-export async function resolveProjectId(
-  manager,
-  { projectId, fallbackId } = {},
-) {
+export async function resolveProjectId(manager, { projectId } = {}) {
   const projects = await manager.listProjects()
   if (projects.length === 0) {
     throw new Error('No projects yet. Join one, or create one first.')
   }
 
   if (projectId) {
-    const matches = projects.filter(
-      (p) => p.projectId === projectId || p.projectId.startsWith(projectId),
-    )
+    const matches = projects.filter((p) => idMatches(p.projectId, projectId))
     if (matches.length === 1) return matches[0].projectId
     if (matches.length === 0)
       throw new Error(`No project matches "${projectId}".`)
@@ -30,16 +32,25 @@ export async function resolveProjectId(
     )
   }
 
-  if (fallbackId && projects.some((p) => p.projectId === fallbackId)) {
-    return fallbackId
-  }
-
   if (projects.length === 1) return projects[0].projectId
 
-  throw new Error(
-    'Multiple projects exist; specify one with --project <id>:\n' +
-      projects
-        .map((p) => `  ${p.projectId.slice(0, 12)}  ${p.name ?? ''}`)
-        .join('\n'),
-  )
+  throw new AmbiguousProjectError(projects)
+}
+
+/**
+ * Thrown when no project id was given and more than one project exists, so the
+ * caller must either demand `--project` or prompt the operator to choose.
+ */
+export class AmbiguousProjectError extends Error {
+  /** @param {Array<{ projectId: string, name?: string }>} projects */
+  constructor(projects) {
+    super(
+      'Multiple projects exist; specify one with --project <id>:\n' +
+        projects
+          .map((p) => `  ${shortId(p.projectId)}  ${p.name ?? ''}`)
+          .join('\n'),
+    )
+    this.name = 'AmbiguousProjectError'
+    this.projects = projects
+  }
 }

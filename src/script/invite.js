@@ -1,9 +1,9 @@
 import { roles } from '@comapeo/core'
 
-import { shortId } from '../core/format.js'
-import { resolveProjectId } from '../core/projects.js'
+import { idMatches, shortId } from '../core/format.js'
 import { openSession } from '../core/session.js'
 import { CliError, info, printJson } from './output.js'
+import { pickProjectId } from './resolve-project.js'
 
 const ROLE_IDS = {
   member: roles.MEMBER_ROLE_ID,
@@ -36,14 +36,9 @@ export async function invite({
     throw new CliError(`Unknown role "${role}" (use member or coordinator).`, 2)
 
   const session = await openSession({ storage, discovery: true })
-  const { manager, config } = session
+  const { manager } = session
   try {
-    const projectId = await resolveProjectId(manager, {
-      projectId: project,
-      fallbackId: config.data.lastProjectId,
-    }).catch((e) => {
-      throw new CliError(e.message, 2)
-    })
+    const projectId = await pickProjectId(manager, { project, json })
 
     if (!json)
       info('Discovering peers… (the device to invite must be on the LAN)')
@@ -84,9 +79,7 @@ async function waitForDevice(manager, deviceId, timeout) {
     const connected = (await manager.listLocalPeers()).filter(
       (p) => p.status === 'connected',
     )
-    const matches = connected.filter(
-      (p) => p.deviceId === deviceId || p.deviceId.startsWith(deviceId),
-    )
+    const matches = connected.filter((p) => idMatches(p.deviceId, deviceId))
     if (matches.length === 1) return matches[0]
     if (matches.length > 1) {
       throw new CliError(
@@ -96,7 +89,7 @@ async function waitForDevice(manager, deviceId, timeout) {
     }
     if (Date.now() > deadline) {
       const seen =
-        connected.map((p) => p.deviceId.slice(0, 8)).join(', ') || 'none'
+        connected.map((p) => shortId(p.deviceId)).join(', ') || 'none'
       throw new CliError(
         `Device "${deviceId}" did not connect within ${timeout}ms (connected: ${seen}).`,
         1,

@@ -68,9 +68,12 @@ Every command accepts `--storage <dir>` and `--json`; errors exit non-zero with 
 | `comapeo stats`                                                       | Recent activity (new records by week, last ~3 months)             |
 | `comapeo fixtures …`                                                  | Generate synthetic data (dev/demo only — this one writes records) |
 
-Most commands act on the last-used project; pass `--project <id-or-prefix>` to
-pick another. `invite` takes a device id from `comapeo peers ls --json` (the
-table shows a short id; the JSON gives the full one). Examples:
+Commands that act on a project take `--project <id-or-prefix>`. If you only have
+one project it's used automatically; otherwise you must name one (in an
+interactive terminal you'll be prompted to pick). Ids shown in human output are
+short base-32 ids — you can pass that short form back as the prefix, and `--json`
+output always carries the full id. `invite` takes a device id from
+`comapeo peers ls`. Examples:
 
 ```bash
 comapeo peers ls --json
