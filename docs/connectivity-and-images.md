@@ -68,7 +68,10 @@ Options, roughly in order of portability:
     `terminal-image` (iTerm2) or `chafa` (sixel/ansi blocks, external binary) wraps
     the detection. More work, and useless over plain SSH / CI logs.
 
-Recommendation: add OSC 8 hyperlinks to the `attachments` entries in the record
-detail view (open in browser), guarded by a capability check (respect `NO_COLOR`
-/ non‑TTY, and `TERM`/`TERM_PROGRAM`). Treat true inline rendering as an optional
-enhancement behind a flag, not the default.
+**Implemented:** the TUI record detail now renders each `attachments` entry as an
+OSC 8 hyperlink to its media‑server URL (`project.$blobs.getUrl`, `original`
+variant), so clicking opens the file in the browser. Capability is detected in
+`src/core/terminal.js` (`supportsHyperlinks` — honors `NO_COLOR`/`FORCE_HYPERLINK`,
+requires a TTY and a known terminal); where unsupported, the URL is printed
+plainly so it can still be copied. True inline pixel rendering (iTerm2/kitty/Sixel)
+remains a possible future enhancement behind a flag, not the default.

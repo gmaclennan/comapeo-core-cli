@@ -122,6 +122,30 @@ test('recordDetail flattens *Ref fields into short docId/versionId lines', () =>
   assert.match(out, /fieldRefs/)
 })
 
+test('recordDetail links attachments when a URL is known and hyperlinks are on', () => {
+  const doc = {
+    docId: 'aa'.repeat(32),
+    schemaName: 'observation',
+    attachments: [{ type: 'photo', name: 'ab'.repeat(8) }],
+  }
+  const url = 'http://127.0.0.1:1234/drive/photo/preview/x'
+  const links = new Map([['ab'.repeat(8), url]])
+
+  // hyperlinks on → emit an OSC 8 sequence carrying the URL
+  const linked = recordDetail(doc, { links, hyperlinks: true })
+  assert.ok(linked.includes(`\x1b]8;;${url}\x1b\\`), 'OSC 8 link emitted')
+
+  // hyperlinks off → no escape, but the URL is still shown plainly to copy
+  const plain = stripAnsi(recordDetail(doc, { links, hyperlinks: false }))
+  assert.ok(!plain.includes('\x1b]8'), 'no hyperlink escape')
+  assert.match(plain, /photo/)
+  assert.ok(plain.includes(url), 'url shown as plain text')
+
+  // no URL resolved → just the label, no crash
+  const none = stripAnsi(recordDetail(doc))
+  assert.match(none, /photo/)
+})
+
 test('sparkline scales to the window max and clamps width', () => {
   assert.equal(sparkline([]), '')
   const s = sparkline([0, 50, 100], 3)

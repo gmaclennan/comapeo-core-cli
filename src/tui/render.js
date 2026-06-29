@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 
 import { shortId } from '../core/format.js'
+import { hyperlink } from '../core/terminal.js'
 
 /**
  * Pure rendering helpers — `state → string`. No I/O, no color-dependent logic,
@@ -231,8 +232,11 @@ const RECORD_HIDDEN = new Set([
  * indented list (matching the design). The TUI never edits records.
  *
  * @param {Record<string, any>} doc
+ * @param {object} [opts]
+ * @param {Map<string, string>} [opts.links] attachment name → media URL
+ * @param {boolean} [opts.hyperlinks] Render attachment URLs as clickable OSC 8 links
  */
-export function recordDetail(doc) {
+export function recordDetail(doc, { links, hyperlinks = false } = {}) {
   const f = (/** @type {string} */ k, /** @type {string} */ v) =>
     `  ${chalk.dim(k.padEnd(13))}${v}`
   const lines = [
@@ -250,6 +254,13 @@ export function recordDetail(doc) {
       for (const [tk, tv] of Object.entries(v)) {
         lines.push(`    ${chalk.dim(tk.padEnd(11))}${fmtValue(tv)}`)
       }
+    } else if (k === 'attachments' && Array.isArray(v)) {
+      if (v.length === 0) {
+        lines.push(f(k, chalk.dim('none')))
+      } else {
+        lines.push(f(k, ''))
+        lines.push(...attachmentLines(v, { links, hyperlinks }))
+      }
     } else if (/Refs?$/.test(k) && v && typeof v === 'object') {
       lines.push(f(k, ''))
       lines.push(...refLines(v))
@@ -262,6 +273,31 @@ export function recordDetail(doc) {
   lines.push(chalk.dim('  ' + '─'.repeat(60)))
   lines.push(chalk.dim('  esc back   ') + chalk.yellow('read-only'))
   return lines.join('\n')
+}
+
+/**
+ * Indented lines for a record's attachments. When the media URL is known and the
+ * terminal supports OSC 8, the label is a clickable link that opens the file in
+ * the browser; otherwise we print the URL plainly so it can still be copied.
+ *
+ * @param {any[]} attachments
+ * @param {{ links?: Map<string, string>, hyperlinks?: boolean }} opts
+ */
+function attachmentLines(attachments, { links, hyperlinks }) {
+  const out = []
+  for (const att of attachments) {
+    const tag =
+      `${att.type ?? 'file'} ${att.name ? shortId(att.name) : ''}`.trim()
+    const url = links?.get(att.name)
+    if (url && hyperlinks) {
+      out.push(`    ${chalk.cyan(hyperlink(url, tag))}`)
+    } else if (url) {
+      out.push(`    ${tag}  ${chalk.dim(url)}`)
+    } else {
+      out.push(`    ${tag}`)
+    }
+  }
+  return out
 }
 
 /**
