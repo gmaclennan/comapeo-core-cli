@@ -27,6 +27,8 @@ export class LocalDiscovery extends EventEmitter {
   #autoConnect
   /** @type {DnsSdBrowser | undefined} */
   #mdns
+  /** The local peer discovery server (its TCP port) once started. @type {{ name: string, port: number } | undefined} */
+  #server
   /** @type {AbortController | undefined} */
   #ac
   /** @type {Promise<void> | undefined} */
@@ -52,8 +54,9 @@ export class LocalDiscovery extends EventEmitter {
    * @returns {Promise<{ name: string, port: number } | undefined>}
    */
   async start() {
-    if (this.#mdns) return
+    if (this.#mdns) return this.#server
     const server = await this.#manager.startLocalPeerDiscoveryServer()
+    this.#server = server
     this.#mdns = new DnsSdBrowser()
     this.#ac = new AbortController()
     // browse() starts the mDNS transport; ready() resolves once its socket binds.
@@ -136,6 +139,27 @@ export class LocalDiscovery extends EventEmitter {
   }
 
   /**
+   * Dial a peer directly by address + port, bypassing mDNS discovery. For
+   * peers the browser can't see (different subnet, an Android emulator behind
+   * `adb forward`/`reverse`, a known static host). The connection surfaces via
+   * `manager.listLocalPeers()` like any other.
+   *
+   * @param {{ address: string, port: number, name?: string }} opts
+   */
+  connectByAddress({ address, port, name = `${address}:${port}` }) {
+    this.#manager.connectLocalPeer({ address, port, name })
+  }
+
+  /**
+   * The local peer discovery server (its TCP port) once {@link start} has run,
+   * else undefined. The port is what a remote peer dials to reach this CLI.
+   * @returns {{ name: string, port: number } | undefined}
+   */
+  getServerInfo() {
+    return this.#server
+  }
+
+  /**
    * Drop ALL peer connections. Core exposes no per-peer disconnect, so this
    * force-stops the discovery server (which destroys every connection) then
    * restarts it, so the operator stays discoverable and can reconnect. The
@@ -146,7 +170,7 @@ export class LocalDiscovery extends EventEmitter {
     if (!this.#mdns) return
     await this.#manager.stopLocalPeerDiscoveryServer({ force: true })
     this.#dialed.clear()
-    await this.#manager.startLocalPeerDiscoveryServer()
+    this.#server = await this.#manager.startLocalPeerDiscoveryServer()
     this.emit('devices-changed')
   }
 
@@ -156,6 +180,7 @@ export class LocalDiscovery extends EventEmitter {
     await this.#mdns.destroy() // closes the UDP socket → clean process exit
     await this.#loop?.catch(() => {})
     this.#mdns = undefined
+    this.#server = undefined
     this.#ac = undefined
     this.#loop = undefined
     this.#discovered.clear()

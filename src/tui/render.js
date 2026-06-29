@@ -277,9 +277,9 @@ export function recordDetail(doc) {
  * the mDNS name can't be correlated to a deviceId before connection.
  *
  * @param {NetworkRow[]} rows
- * @param {{ selectedIndex?: number }} [opts]
+ * @param {{ selectedIndex?: number, listen?: { port: number, addresses: Array<{ iface: string, address: string }> } }} [opts]
  */
-export function networkScreen(rows, { selectedIndex = 0 } = {}) {
+export function networkScreen(rows, { selectedIndex = 0, listen } = {}) {
   const connected = rows.filter((r) => r.kind === 'peer')
   const available = rows.filter((r) => r.kind === 'device')
   const lines = [
@@ -287,8 +287,14 @@ export function networkScreen(rows, { selectedIndex = 0 } = {}) {
       chalk.dim(
         `   ${connected.length} connected · ${available.length} available`,
       ),
-    chalk.dim('  ' + '─'.repeat(60)),
   ]
+  if (listen) {
+    const where = listen.addresses.length
+      ? listen.addresses.map((a) => `${a.address}:${listen.port}`).join('  ')
+      : `port ${listen.port}`
+    lines.push(chalk.dim(`  listening at ${where}`))
+  }
+  lines.push(chalk.dim('  ' + '─'.repeat(60)))
   if (rows.length === 0) lines.push(chalk.dim('  No devices nearby yet…'))
   let i = 0
   const caret = (/** @type {boolean} */ sel) => (sel ? chalk.cyan('❯ ') : '  ')
@@ -324,7 +330,7 @@ export function networkScreen(rows, { selectedIndex = 0 } = {}) {
   lines.push(
     chalk.dim('  ' + '─'.repeat(60)),
     chalk.dim(
-      '  ↑↓ select · ↵ connect · c connect all · x disconnect all · esc back',
+      '  ↑↓ select · ↵ connect · a add by IP · c connect all · x disconnect all · esc back',
     ),
   )
   return lines.join('\n')

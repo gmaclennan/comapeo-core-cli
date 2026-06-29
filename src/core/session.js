@@ -1,5 +1,6 @@
 import { bootstrap } from './bootstrap.js'
 import { LocalDiscovery } from './discovery.js'
+import { lanAddresses } from './net.js'
 
 /**
  * @typedef {object} DiscoveredDevice
@@ -18,8 +19,10 @@ import { LocalDiscovery } from './discovery.js'
  * @property {() => Promise<void>} stopDiscovery
  * @property {() => DiscoveredDevice[]} listDevices
  * @property {(name: string) => void} connectDevice
+ * @property {(opts: { address: string, port: number, name?: string }) => void} connectByAddress
  * @property {() => void} connectAllDevices
  * @property {() => Promise<void>} disconnectAll
+ * @property {() => { port: number, addresses: Array<{ iface: string, address: string }> } | undefined} getListenAddress
  * @property {(cb: () => void) => () => void} onDevicesChanged
  * @property {() => Promise<void>} close
  */
@@ -79,8 +82,13 @@ export async function openSession({
     stopDiscovery,
     listDevices: () => disco.listDiscovered(),
     connectDevice: (name) => disco.connect(name),
+    connectByAddress: (opts) => disco.connectByAddress(opts),
     connectAllDevices: () => disco.connectAll(),
     disconnectAll: () => disco.disconnectAll(),
+    getListenAddress: () => {
+      const info = disco.getServerInfo()
+      return info ? { port: info.port, addresses: lanAddresses() } : undefined
+    },
     onDevicesChanged: (cb) => {
       disco.on('devices-changed', cb)
       return () => disco.off('devices-changed', cb)

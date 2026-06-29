@@ -191,7 +191,10 @@ export async function startTui({ storage, io, session: injectedSession }) {
       return recordDetail(state.record)
     }
     if (state.screen === 'devices')
-      return networkScreen(networkRows(), { selectedIndex: state.deviceIndex })
+      return networkScreen(networkRows(), {
+        selectedIndex: state.deviceIndex,
+        listen: session.getListenAddress(),
+      })
     if (state.screen === 'join') return joinFrame()
     return menuFrame()
   }
@@ -206,6 +209,21 @@ export async function startTui({ storage, io, session: injectedSession }) {
       .filter((d) => !d.dialed)
       .map((device) => ({ kind: 'device', device }))
     return [...connected, ...available]
+  }
+  /**
+   * Manually dial a peer by IP + port — for devices mDNS can't see (another
+   * subnet, an Android emulator behind `adb forward`/`reverse`).
+   */
+  async function addPeerByAddress() {
+    const address = await withPrompt(() =>
+      input({ message: 'Peer address (IP or host)' }, promptCtx),
+    )
+    if (!address?.trim()) return
+    const port = await withPrompt(() =>
+      number({ message: 'Peer port', min: 1, max: 65535 }, promptCtx),
+    )
+    if (!port) return
+    session.connectByAddress({ address: address.trim(), port })
   }
   function joinFrame() {
     const invites = state.invites
@@ -1231,6 +1249,8 @@ export async function startTui({ storage, io, session: injectedSession }) {
       } else if (name === 'return' || name === 'enter') {
         const row = rows[state.deviceIndex]
         if (row?.kind === 'device') session.connectDevice(row.device.name)
+      } else if (name === 'a') {
+        void addPeerByAddress()
       } else if (name === 'c') {
         session.connectAllDevices()
       } else if (name === 'x') {

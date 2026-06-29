@@ -59,6 +59,8 @@ Every command accepts `--storage <dir>` and `--json`; errors exit non-zero with 
 | `comapeo projects ls [--include-left]` / `projects create --name <n>` | List or create projects                                           |
 | `comapeo projects leave <id> [--yes]`                                 | Leave a project (remove it from this device)                      |
 | `comapeo peers ls [--wait-connected]`                                 | List devices connected on the LAN                                 |
+| `comapeo peers connect <address> <port>`                              | Connect to a peer directly by IP + port (bypasses mDNS)           |
+| `comapeo peers address`                                               | Show the address + port a remote peer can dial to reach this CLI  |
 | `comapeo join [--auto-accept] [--from <name>]`                        | Wait for and accept an invite                                     |
 | `comapeo invite <deviceId> [--role member\|coordinator]`              | Invite a connected device (coordinator side)                      |
 | `comapeo sync [--once] [--full]`                                      | Sync with connected peers (streams NDJSON, or `--once` to exit)   |

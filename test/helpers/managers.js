@@ -36,7 +36,8 @@ export async function makeManager(name, cleanups) {
  *
  * @type {Pick<import('../../src/core/session.js').Session,
  *   'isDiscovering' | 'startDiscovery' | 'stopDiscovery' | 'listDevices' |
- *   'connectDevice' | 'connectAllDevices' | 'disconnectAll' | 'onDevicesChanged'>}
+ *   'connectDevice' | 'connectByAddress' | 'connectAllDevices' | 'disconnectAll' |
+ *   'onDevicesChanged' | 'getListenAddress'>}
  */
 export const noopDiscovery = {
   isDiscovering: () => true,
@@ -44,9 +45,11 @@ export const noopDiscovery = {
   stopDiscovery: async () => {},
   listDevices: () => [],
   connectDevice: () => {},
+  connectByAddress: () => {},
   connectAllDevices: () => {},
   disconnectAll: async () => {},
   onDevicesChanged: () => () => {},
+  getListenAddress: () => undefined,
 }
 
 /**

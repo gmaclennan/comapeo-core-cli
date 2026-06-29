@@ -169,6 +169,36 @@ yargs(hideBin(process.argv))
             }),
         run(async () => (await import('../src/script/peers.js')).peersList),
       )
+      .command(
+        'connect <address> <port>',
+        'Connect to a peer by address + port (bypasses mDNS discovery)',
+        (y2) =>
+          y2
+            .positional('address', {
+              type: 'string',
+              describe: 'IP address or host of the peer',
+            })
+            .positional('port', {
+              type: 'number',
+              describe: 'TCP port the peer is listening on',
+            })
+            .option('timeout', {
+              type: 'number',
+              default: 30_000,
+              describe: 'ms to wait for the peer to connect',
+            })
+            .example(
+              'comapeo peers connect 192.168.1.42 53124',
+              'Dial a peer on the LAN directly',
+            ),
+        run(async () => (await import('../src/script/peers.js')).peersConnect),
+      )
+      .command(
+        'address',
+        'Show the address + port a remote peer can dial to reach this CLI',
+        (y2) => y2,
+        run(async () => (await import('../src/script/peers.js')).peersAddress),
+      )
       .demandCommand(1, 'Specify a peers subcommand'),
   )
   .command(
