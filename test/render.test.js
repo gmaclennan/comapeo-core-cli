@@ -193,10 +193,38 @@ test('dashboard renders a row per peer and a caught-up footer', () => {
       },
     },
   })
-  const frame = stripAnsi(dashboard(model, { projectName: 'Survey' }))
+  const frame = stripAnsi(
+    dashboard(model, { projectName: 'Survey', memberIds: new Set(['A']) }),
+  )
   assert.match(frame, /CoMapeo Sync\s+Survey\s+1 peer/)
+  assert.match(frame, /IN THIS PROJECT/)
   assert.match(frame, /laptop/)
   assert.match(frame, /All connected peers are caught up/)
   // L0 aggregate bar present (everything synced → 100%).
   assert.match(frame, /█{4,}.*100%/s)
+})
+
+test('dashboard sections connected non-members as invite candidates', () => {
+  const model = createSyncModel()
+  model.applyPeers([
+    { deviceId: 'A', name: 'laptop', status: 'connected' },
+    { deviceId: 'B', name: 'stranger', status: 'connected' },
+  ])
+  model.applySyncState({
+    initial: { isSyncEnabled: true },
+    data: { isSyncEnabled: true },
+    remoteDeviceSyncState: {
+      A: {
+        initial: { isSyncEnabled: true, want: 0, wanted: 0 },
+        data: { isSyncEnabled: true, want: 0, wanted: 0 },
+      },
+    },
+  })
+  // Only A is a member; B is connected but not in the project.
+  const frame = stripAnsi(
+    dashboard(model, { projectName: 'Survey', memberIds: new Set(['A']) }),
+  )
+  assert.match(frame, /1 in project · 1 other/)
+  assert.match(frame, /CONNECTED · NOT IN PROJECT/)
+  assert.match(frame, /stranger.*invite ›/)
 })

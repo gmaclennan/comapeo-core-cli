@@ -181,3 +181,25 @@ export function createSyncModel() {
 }
 
 /** @typedef {ReturnType<typeof createSyncModel>} SyncModel */
+
+/**
+ * Split sync rows into peers that belong to the project (members, by deviceId)
+ * and connected peers that don't — the latter are invite candidates, not part
+ * of the sync set. Members are kept even when disconnected (so you can see who's
+ * in the project but offline); non-member peers are only kept while connected.
+ * `ordered` is the flat selectable list (in-project first) so a caret index maps
+ * straight through a sectioned render.
+ *
+ * @param {PeerRow[]} rows
+ * @param {Set<string>} [memberIds]
+ * @returns {{ inProject: PeerRow[], others: PeerRow[], ordered: PeerRow[] }}
+ */
+export function partitionSyncRows(rows, memberIds = new Set()) {
+  const inProject = []
+  const others = []
+  for (const row of rows) {
+    if (memberIds.has(row.deviceId)) inProject.push(row)
+    else if (row.connection !== 'disconnected') others.push(row)
+  }
+  return { inProject, others, ordered: [...inProject, ...others] }
+}

@@ -9,6 +9,7 @@ import os from 'node:os'
 import { generateFixtures, resolveCenter } from '../core/fixtures.js'
 import { shortId } from '../core/format.js'
 import { openSession } from '../core/session.js'
+import { partitionSyncRows } from '../core/sync-model.js'
 import { runSync } from '../core/sync-runner.js'
 import { supportsHyperlinks } from '../core/terminal.js'
 import { createKeyReader } from './keys.js'
@@ -134,6 +135,8 @@ export async function startTui({ storage, io, session: injectedSession }) {
     devices: [],
     /** Selected row on the Network screen. */
     deviceIndex: 0,
+    /** Member deviceIds of the current project, to mark project vs non-project peers. @type {Set<string>} */
+    memberIds: new Set(),
     /** @type {string | undefined} */
     projectId: config.data.lastProjectId,
     /** @type {string | undefined} */
@@ -176,6 +179,7 @@ export async function startTui({ storage, io, session: injectedSession }) {
         raw: state.raw,
         rate: rate.value,
         spark: rate.spark,
+        memberIds: state.memberIds,
       })
     }
     if (state.screen === 'message' && state.message) {
@@ -644,6 +648,26 @@ export async function startTui({ storage, io, session: injectedSession }) {
   }
 
   /**
+   * Refresh the current project's member deviceIds, used to tell project peers
+   * apart from connected-but-not-invited devices on the sync/network screens.
+   */
+  async function refreshMembers() {
+    state.memberIds = new Set()
+    if (!state.projectId) return
+    try {
+      const project = /** @type {any} */ (
+        await manager.getProject(state.projectId)
+      )
+      const members = await project.$member.getMany()
+      state.memberIds = new Set(
+        members.map((/** @type {any} */ m) => m.deviceId),
+      )
+    } catch {
+      // project not open / no membership yet — leave the set empty
+    }
+  }
+
+  /**
    * Open the sync screen in the stopped state (no connection, no data sync).
    * @param {string} projectId @param {string} [projectName]
    */
@@ -654,6 +678,7 @@ export async function startTui({ storage, io, session: injectedSession }) {
     state.syncing = false
     state.projectId = projectId
     if (projectName) state.projectName = projectName
+    await refreshMembers()
     state.screen = 'sync'
     repaint()
   }
@@ -687,8 +712,14 @@ export async function startTui({ storage, io, session: injectedSession }) {
     rate.spark = ''
     rateTimer = setInterval(() => {
       if (!state.sync) return
-      // Once caught up, stop sampling — no point repainting a flat zero each second.
-      if (state.sync.model.isAllSynced()) {
+      // Once caught up, stop sampling — no point repainting a flat zero each
+      // second. Scoped to project peers (non-member peers never "sync").
+      const { inProject } = partitionSyncRows(
+        state.sync.model.list(),
+        state.memberIds,
+      )
+      const connected = inProject.filter((r) => r.connection === 'connected')
+      if (connected.length > 0 && connected.every((r) => r.synced)) {
         stopRateSampler()
         if (state.screen === 'sync') repaint()
         return
@@ -992,8 +1023,12 @@ export async function startTui({ storage, io, session: injectedSession }) {
     }
   }
 
-  // Invite a nearby non-member device (from the sync screen [i]).
-  async function inviteDevice() {
+  /**
+   * Pick a connected device that isn't in the project yet, then invite it.
+   * Reached from the sync screen, the Network screen, and the Members screen.
+   * @param {() => any} [onBack] Where to return on cancel (defaults to home)
+   */
+  async function inviteDevice(onBack = backToMenu) {
     if (!state.projectId) return
     const project = /** @type {any} */ (
       await manager.getProject(state.projectId)
@@ -1009,21 +1044,34 @@ export async function startTui({ storage, io, session: injectedSession }) {
     showList({
       title: 'Invite a device',
       subtitle: state.projectName,
-      header: 'nearby devices not yet in this project',
+      header: candidates.length
+        ? 'nearby devices not yet in this project'
+        : 'no connected devices to invite — connect one on Network [n]',
       items: candidates,
       render: (p) =>
         (p.name ?? shortId(p.deviceId)).padEnd(18) +
         chalk.gray(shortId(p.deviceId)) +
         chalk.dim(`  ${p.deviceType ?? ''}`),
-      onSelect: (p) => pickRole(project, p),
-      onBack: () => {
-        state.screen = 'sync'
-        repaint()
-      },
+      onSelect: (p) => pickRole(project, p, () => void inviteDevice(onBack)),
+      onBack,
     })
   }
-  /** @param {any} project @param {import('@comapeo/core').PublicPeerInfo} peer */
-  function pickRole(project, peer) {
+
+  /**
+   * Invite one specific already-known peer, skipping the candidate list.
+   * @param {{ deviceId: string, name?: string }} peer
+   * @param {() => any} onBack
+   */
+  async function invitePeer(peer, onBack) {
+    if (!state.projectId) return
+    const project = /** @type {any} */ (
+      await manager.getProject(state.projectId)
+    )
+    pickRole(project, peer, onBack)
+  }
+
+  /** @param {any} project @param {{ deviceId: string, name?: string }} peer @param {() => any} onBack */
+  function pickRole(project, peer, onBack) {
     const ROLES = [
       { name: 'member', id: roles.MEMBER_ROLE_ID },
       { name: 'coordinator', id: roles.COORDINATOR_ROLE_ID },
@@ -1033,15 +1081,15 @@ export async function startTui({ storage, io, session: injectedSession }) {
       subtitle: 'choose a role',
       items: ROLES,
       render: (r) => r.name,
-      onSelect: (r) => void sendInvite(project, peer, r),
-      onBack: () => void inviteDevice(),
+      onSelect: (r) => void sendInvite(project, peer, r, onBack),
+      onBack,
     })
   }
-  /** @param {any} project @param {import('@comapeo/core').PublicPeerInfo} peer @param {{ name: string, id: any }} role */
-  async function sendInvite(project, peer, role) {
+  /** @param {any} project @param {{ deviceId: string, name?: string }} peer @param {{ name: string, id: any }} role @param {() => any} [onBack] */
+  async function sendInvite(project, peer, role, onBack) {
     const label = peer.name ?? shortId(peer.deviceId)
     state.screen = 'message'
-    state.messageBack = undefined
+    state.messageBack = onBack
     state.message = {
       title: 'Invite',
       body: `Inviting ${label} as ${role.name}…`,
@@ -1055,6 +1103,9 @@ export async function startTui({ storage, io, session: injectedSession }) {
     } catch (err) {
       result = `failed: ${err instanceof Error ? err.message : String(err)}`
     }
+    // An accepted invite makes the device a member — refresh so it moves into
+    // the project section on the sync/network screens.
+    if (result === 'accept') await refreshMembers()
     state.message = { title: 'Invite', body: `${label}: ${result}` }
     repaint()
   }
@@ -1322,6 +1373,9 @@ export async function startTui({ storage, io, session: injectedSession }) {
         void rejectInvite(invites[state.inviteIndex])
       } else if (name === 'escape') void leaveJoin()
     } else if (state.screen === 'sync') {
+      const ordered = state.sync
+        ? partitionSyncRows(state.sync.model.list(), state.memberIds).ordered
+        : []
       if (name === 's') toggleSync()
       else if (name === 'r') {
         state.raw = !state.raw
@@ -1330,21 +1384,31 @@ export async function startTui({ storage, io, session: injectedSession }) {
         name === 'i' &&
         state.peers.some((p) => p.status === 'connected')
       )
-        void inviteDevice()
+        void inviteDevice(() => {
+          state.screen = 'sync'
+          repaint()
+        })
       else if (name === 'up') {
         state.peerIndex = Math.max(0, state.peerIndex - 1)
         repaint()
       } else if (name === 'down') {
-        const n = state.sync ? state.sync.model.list().length : 0
-        state.peerIndex = Math.min(Math.max(0, n - 1), state.peerIndex + 1)
+        state.peerIndex = Math.min(
+          Math.max(0, ordered.length - 1),
+          state.peerIndex + 1,
+        )
         repaint()
       } else if (name === 'return' || name === 'enter') {
-        const rows = state.sync ? state.sync.model.list() : []
-        const row = rows[state.peerIndex]
-        if (row) {
+        const row = ordered[state.peerIndex]
+        if (row && state.memberIds.has(row.deviceId)) {
           state.peerDetail = row
           state.screen = 'peerDetail'
           repaint()
+        } else if (row) {
+          // A connected non-member row → invite it.
+          void invitePeer(row, () => {
+            state.screen = 'sync'
+            repaint()
+          })
         }
       } else if (name === 'escape') void leaveSync()
     }

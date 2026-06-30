@@ -1,6 +1,7 @@
 import chalk from 'chalk'
 
 import { shortId } from '../core/format.js'
+import { partitionSyncRows } from '../core/sync-model.js'
 import { hyperlink } from '../core/terminal.js'
 
 /**
@@ -94,32 +95,45 @@ function colorGlyph(/** @type {string} */ glyph) {
 }
 
 /**
- * The full sync dashboard frame.
+ * The full sync dashboard frame. Peers are split into those in the project
+ * (members) and connected devices that aren't yet — the latter are invite
+ * candidates, shown in their own section, not part of the sync set.
+ *
  * @param {import('../core/sync-model.js').SyncModel} model
  * @param {object} ctx
  * @param {string} ctx.projectName
- * @param {number} [ctx.selectedIndex] Selected peer row (for ↵ drill-in)
+ * @param {number} [ctx.selectedIndex] Selected row in the flat (in-project first) list
  * @param {boolean} [ctx.raw] Show raw block counts instead of %
  * @param {number} [ctx.rate] Blocks/sec over the last sample
  * @param {string} [ctx.spark] Recent-throughput sparkline
+ * @param {Set<string>} [ctx.memberIds] deviceIds that belong to the project
  */
 export function dashboard(
   model,
-  { projectName, selectedIndex = 0, raw = false, rate, spark },
+  { projectName, selectedIndex = 0, raw = false, rate, spark, memberIds },
 ) {
-  const rows = model.list()
-  const header =
-    chalk.bold('CoMapeo Sync') +
-    chalk.dim(
-      `   ${projectName}   ${rows.length} peer${rows.length === 1 ? '' : 's'}`,
-    )
+  const { inProject, others, ordered } = partitionSyncRows(
+    model.list(),
+    memberIds,
+  )
 
-  // L0 aggregate bar (+ live rate/sparkline): "are we synced yet?" across all peers.
-  const peak = rows.reduce(
+  const count =
+    others.length > 0
+      ? `${inProject.length} in project · ${others.length} other`
+      : `${inProject.length} peer${inProject.length === 1 ? '' : 's'}`
+  const header =
+    chalk.bold('CoMapeo Sync') + chalk.dim(`   ${projectName}   ${count}`)
+
+  // L0 aggregate bar (+ live rate/sparkline): "are we synced yet?" — over the
+  // project peers only (others don't sync this project).
+  const peak = inProject.reduce(
     (s, r) => s + r.initial.peakWanted + r.data.peakWanted,
     0,
   )
-  const left = rows.reduce((s, r) => s + r.initial.wanted + r.data.wanted, 0)
+  const left = inProject.reduce(
+    (s, r) => s + r.initial.wanted + r.data.wanted,
+    0,
+  )
   const overall = peak === 0 ? 1 : (peak - left) / peak
   const activity =
     rate === undefined
@@ -131,28 +145,49 @@ export function dashboard(
     `    ${'PEER'.padEnd(16)}  ${'STATUS'.padEnd(10)}  ${'INITIAL'.padEnd(16)}  ${'DATA'.padEnd(16)}  ${raw ? 'want/wanted' : '↓/↑'}`,
   )
 
-  const body =
-    rows.length === 0
-      ? chalk.dim('  Waiting for peers…')
-      : rows
-          .map((row, i) => {
-            const caret = i === selectedIndex ? chalk.cyan('❯ ') : '  '
-            const line = peerLine(row, { raw }).replace(/^(.)/, (m) =>
-              colorGlyph(m),
-            )
-            return caret + line
-          })
-          .join('\n')
+  /** @param {string} sectionTitle @param {import('../core/sync-model.js').PeerRow[]} group @param {number} base @param {(row: any, sel: boolean) => string} renderRow */
+  const section = (sectionTitle, group, base, renderRow) => {
+    if (group.length === 0) return []
+    const out = [chalk.dim('  ' + sectionTitle)]
+    group.forEach((row, j) => {
+      const sel = base + j === selectedIndex
+      out.push((sel ? chalk.cyan('❯ ') : '  ') + renderRow(row, sel))
+    })
+    return out
+  }
 
-  const footer = model.isAllSynced()
-    ? chalk.green('  ✓ All connected peers are caught up.')
-    : chalk.dim('  Syncing…')
+  const body =
+    ordered.length === 0
+      ? [chalk.dim('  Waiting for project peers…')]
+      : [
+          ...section('IN THIS PROJECT', inProject, 0, (row) =>
+            peerLine(row, { raw }).replace(/^(.)/, (m) => colorGlyph(m)),
+          ),
+          ...section(
+            'CONNECTED · NOT IN PROJECT',
+            others,
+            inProject.length,
+            (row) =>
+              chalk.dim('○ ') +
+              (row.name ?? shortId(row.deviceId)).slice(0, 16).padEnd(16) +
+              chalk.dim((row.deviceType ?? '').padEnd(12)) +
+              chalk.yellow('invite ›'),
+          ),
+        ]
+
+  const projectConnected = inProject.filter((r) => r.connection === 'connected')
+  const footer =
+    projectConnected.length > 0 && projectConnected.every((r) => r.synced)
+      ? chalk.green('  ✓ All connected peers are caught up.')
+      : chalk.dim('  Syncing…')
 
   const keys = chalk.dim(
-    '  ↑↓ select · ↵ peer detail · s pause · r raw · i invite · esc back',
+    '  ↑↓ select · ↵ peer detail · i invite · s pause · r raw · esc back',
   )
 
-  return [header, overallBar, '', cols, body, '', footer, keys].join('\n')
+  return [header, '', overallBar, '', cols, ...body, '', footer, keys].join(
+    '\n',
+  )
 }
 
 /**
@@ -313,7 +348,7 @@ function attachmentLines(attachments, { links, hyperlinks }) {
  * the mDNS name can't be correlated to a deviceId before connection.
  *
  * @param {NetworkRow[]} rows
- * @param {{ selectedIndex?: number, listen?: { port: number, addresses: Array<{ iface: string, address: string }> } }} [opts]
+ * @param {{ selectedIndex?: number, listen?: { port: number, addresses: Array<{ iface: string, address: string }> }, memberIds?: Set<string> }} [opts]
  */
 export function networkScreen(rows, { selectedIndex = 0, listen } = {}) {
   const connected = rows.filter((r) => r.kind === 'peer')
