@@ -350,7 +350,10 @@ function attachmentLines(attachments, { links, hyperlinks }) {
  * @param {NetworkRow[]} rows
  * @param {{ selectedIndex?: number, listen?: { port: number, addresses: Array<{ iface: string, address: string }> }, memberIds?: Set<string> }} [opts]
  */
-export function networkScreen(rows, { selectedIndex = 0, listen } = {}) {
+export function networkScreen(
+  rows,
+  { selectedIndex = 0, listen, memberIds } = {},
+) {
   const connected = rows.filter((r) => r.kind === 'peer')
   const available = rows.filter((r) => r.kind === 'device')
   const lines = [
@@ -374,12 +377,16 @@ export function networkScreen(rows, { selectedIndex = 0, listen } = {}) {
     for (const r of connected) {
       const p = /** @type {{ kind: 'peer', peer: any }} */ (r).peer
       const name = (p.name ?? shortId(p.deviceId)).slice(0, 20).padEnd(20)
+      const inProject = memberIds?.has(p.deviceId)
+      const tag = inProject
+        ? chalk.dim('in project')
+        : chalk.yellow('not in project · i invite')
       lines.push(
         caret(i === selectedIndex) +
           chalk.green('● ') +
           name +
           chalk.dim((p.deviceType ?? '').padEnd(12)) +
-          chalk.dim('connected'),
+          tag,
       )
       i++
     }
@@ -401,7 +408,7 @@ export function networkScreen(rows, { selectedIndex = 0, listen } = {}) {
   lines.push(
     chalk.dim('  ' + '─'.repeat(60)),
     chalk.dim(
-      '  ↑↓ select · ↵ connect · a add by IP · c connect all · x disconnect all · esc back',
+      '  ↑↓ select · ↵ connect · i invite · a add by IP · c connect all · x disconnect all · esc back',
     ),
   )
   return lines.join('\n')

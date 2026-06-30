@@ -135,6 +135,8 @@ export async function startTui({ storage, io, session: injectedSession }) {
     devices: [],
     /** Selected row on the Network screen. */
     deviceIndex: 0,
+    /** Where `esc` returns from the Network screen. @type {(() => any) | undefined} */
+    devicesBack: undefined,
     /** Member deviceIds of the current project, to mark project vs non-project peers. @type {Set<string>} */
     memberIds: new Set(),
     /** @type {string | undefined} */
@@ -205,6 +207,7 @@ export async function startTui({ storage, io, session: injectedSession }) {
       return networkScreen(networkRows(), {
         selectedIndex: state.deviceIndex,
         listen: session.getListenAddress(),
+        memberIds: state.memberIds,
       })
     if (state.screen === 'join') return joinFrame()
     return menuFrame()
@@ -791,18 +794,29 @@ export async function startTui({ storage, io, session: injectedSession }) {
       await manager.getProject(state.projectId)
     )
     const members = await project.$member.getMany()
+    state.memberIds = new Set(members.map((/** @type {any} */ m) => m.deviceId))
     showList({
       title: 'Members',
       subtitle: state.projectName,
       header: 'DEVICE'.padEnd(20) + 'ID'.padEnd(8) + 'ROLE',
-      items: members,
+      items: [
+        ...members,
+        { separator: true },
+        { kind: 'action', label: 'Invite a device…' },
+      ],
       render: (/** @type {any} */ m) =>
-        (m.name ?? '(unknown)').padEnd(20) +
-        chalk.gray(shortId(m.deviceId).padEnd(8)) +
-        chalk.dim(m.role?.name ?? '') +
-        (m.deviceId === manager.deviceId ? chalk.dim('  (you) ↵ edit') : ''),
+        m.kind === 'action'
+          ? chalk.cyan('+ ' + m.label)
+          : (m.name ?? '(unknown)').padEnd(20) +
+            chalk.gray(shortId(m.deviceId).padEnd(8)) +
+            chalk.dim(m.role?.name ?? '') +
+            (m.deviceId === manager.deviceId
+              ? chalk.dim('  (you) ↵ edit')
+              : ''),
       // Other members are read-only; opening your own device edits its settings.
       onSelect: (/** @type {any} */ m) => {
+        if (m.kind === 'action')
+          return void inviteDevice(() => void showMembers())
         if (m.deviceId === manager.deviceId)
           showDevice(() => void showMembers())
       },
@@ -1204,10 +1218,15 @@ export async function startTui({ storage, io, session: injectedSession }) {
   state.devices = session.listDevices()
 
   // Home menu — drives both arrow-nav (visible selection) and letter hotkeys.
-  const openDevices = () => {
+  /** @param {(() => any)} [back] Where `esc` returns (defaults to the home menu) */
+  const openDevices = (back = backToMenu) => {
     state.devices = session.listDevices()
     state.deviceIndex = 0
+    state.devicesBack = back
     state.screen = 'devices'
+    void refreshMembers().then(() => {
+      if (state.screen === 'devices') repaint()
+    })
     repaint()
   }
   /** @type {Array<{ key: string, label: string | (() => string), run: () => void }>} */
@@ -1242,7 +1261,7 @@ export async function startTui({ storage, io, session: injectedSession }) {
     },
     {
       key: 'm',
-      label: 'Members — who can access this project',
+      label: 'Members — who can access · invite a device',
       run: () => void showMembers(),
     },
     {
@@ -1347,6 +1366,12 @@ export async function startTui({ storage, io, session: injectedSession }) {
       } else if (name === 'return' || name === 'enter') {
         const row = rows[state.deviceIndex]
         if (row?.kind === 'device') session.connectDevice(row.device.name)
+      } else if (name === 'i') {
+        const row = rows[state.deviceIndex]
+        if (row?.kind === 'peer' && !state.memberIds.has(row.peer.deviceId)) {
+          const back = () => openDevices(state.devicesBack)
+          void invitePeer(row.peer, back)
+        }
       } else if (name === 'a') {
         void addPeerByAddress()
       } else if (name === 'c') {
@@ -1354,7 +1379,7 @@ export async function startTui({ storage, io, session: injectedSession }) {
       } else if (name === 'x') {
         void session.disconnectAll()
       } else if (name === 'escape') {
-        backToMenu()
+        ;(state.devicesBack ?? backToMenu)()
       }
     } else if (state.screen === 'join') {
       const invites = state.invites
